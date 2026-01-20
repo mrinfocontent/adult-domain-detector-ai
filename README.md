@@ -76,4 +76,7 @@ See [Privacy Policy](PRIVACY_POLICY.md)
 
 ## 📄 License
 
-MIT License
+This project is proprietary software.  
+All rights reserved.  
+Unauthorized copying, modification, or redistribution is prohibited.
+
