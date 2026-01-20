@@ -10,12 +10,40 @@ const providerSelect = document.getElementById("aiProvider");
 let adultDomains = [];
 
 // ===============================
-// Load adult domains
+// Platform name → domain aliases
 // ===============================
-fetch(chrome.runtime.getURL("../data/adult-domains.json"))
-  .then(res => res.json())
-  .then(data => adultDomains = data)
-  .catch(() => adultDomains = []);
+const platformAliases = {
+  "fansly": "fansly.com",
+  "chaturbate": "chaturbate.com",
+  "onlyfans": "onlyfans.com",
+  "xvideos": "xvideos.com",
+  "pornhub": "pornhub.com",
+  "xnxx": "xnxx.com",
+  "xhamster": "xhamster.com",
+  "spankbang": "spankbang.com",
+  "beeg": "beeg.com",
+  "redtube": "redtube.com",
+  "youporn": "youporn.com"
+};
+
+// ===============================
+// Load adult domains (ROOT SAFE)
+// ===============================
+fetch(chrome.runtime.getURL("data/adult-domains.json"))
+  .then(res => {
+    if (!res.ok) throw new Error("Failed to load adult-domains.json");
+    return res.json();
+  })
+  .then(data => {
+    adultDomains = data.map(d =>
+      d.replace(/^www\./, "").toLowerCase()
+    );
+    console.log("Adult domains loaded:", adultDomains.length);
+  })
+  .catch(err => {
+    console.error("Adult domain list error:", err);
+    adultDomains = [];
+  });
 
 // ===============================
 // Load saved settings
@@ -23,9 +51,8 @@ fetch(chrome.runtime.getURL("../data/adult-domains.json"))
 chrome.storage.sync.get(
   ["aiProvider", "openaiKey", "groqKey", "geminiKey"],
   res => {
-    providerSelect.value = res.aiProvider || "openai";
-    apiKeyInput.value =
-      res[providerSelect.value + "Key"] || "";
+    providerSelect.value = res.aiProvider || "groq";
+    apiKeyInput.value = res[providerSelect.value + "Key"] || "";
   }
 );
 
@@ -36,8 +63,7 @@ providerSelect.addEventListener("change", () => {
   chrome.storage.sync.get(
     ["openaiKey", "groqKey", "geminiKey"],
     res => {
-      apiKeyInput.value =
-        res[providerSelect.value + "Key"] || "";
+      apiKeyInput.value = res[providerSelect.value + "Key"] || "";
     }
   );
 });
@@ -49,10 +75,13 @@ saveKeyBtn.addEventListener("click", () => {
   const provider = providerSelect.value;
   const key = apiKeyInput.value.trim();
 
-  chrome.storage.sync.set({
-    aiProvider: provider,
-    [`${provider}Key`]: key
-  }, () => alert("Settings saved"));
+  chrome.storage.sync.set(
+    {
+      aiProvider: provider,
+      [`${provider}Key`]: key
+    },
+    () => alert("Settings saved")
+  );
 });
 
 // ===============================
@@ -63,7 +92,7 @@ analyzeBtn.addEventListener("click", async () => {
   resultDiv.innerHTML = "";
 
   if (!text) {
-    resultDiv.textContent = "Please paste a description.";
+    resultDiv.innerHTML = "<p>Please paste a description.</p>";
     return;
   }
 
@@ -90,36 +119,54 @@ analyzeBtn.addEventListener("click", async () => {
 });
 
 // ===============================
-// Local detection
+// Domain extraction (.com etc)
 // ===============================
 function extractDomains(text) {
   const regex = /\b(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})\b/gi;
-  const set = new Set();
+  const found = new Set();
   let m;
+
   while ((m = regex.exec(text)) !== null) {
-    set.add(m[1].toLowerCase());
+    found.add(
+      m[1].replace(/^www\./, "").toLowerCase()
+    );
   }
-  return [...set];
+  return [...found];
 }
 
+// ===============================
+// Local detection (domains + names)
+// ===============================
 function localDetection(domains, text) {
   const keywords = ["porn", "xxx", "sex", "adult", "nsfw", "cam", "18+", "explicit"];
   const found = [];
+  const lowerText = text.toLowerCase();
 
+  // 1️⃣ Domain-based detection
   domains.forEach(d => {
     if (adultDomains.includes(d)) found.push(d);
     keywords.forEach(k => d.includes(k) && found.push(d));
   });
 
-  keywords.forEach(k =>
-    text.toLowerCase().includes(k) && found.push(`keyword: ${k}`)
-  );
+  // 2️⃣ Platform-name alias detection
+  Object.keys(platformAliases).forEach(name => {
+    if (lowerText.includes(name)) {
+      found.push(platformAliases[name]);
+    }
+  });
+
+  // 3️⃣ Keyword detection
+  keywords.forEach(k => {
+    if (lowerText.includes(k)) {
+      found.push(`keyword: ${k}`);
+    }
+  });
 
   return [...new Set(found)];
 }
 
 // ===============================
-// Shared prompt
+// STRICT AI PROMPT
 // ===============================
 const STRICT_PROMPT = `
 You are a STRICT adult-content classifier.
@@ -187,9 +234,9 @@ async function detectGemini(text, key) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: STRICT_PROMPT + prompt(text) }]
-        }]
+        contents: [
+          { parts: [{ text: STRICT_PROMPT + prompt(text) }] }
+        ]
       })
     }
   );
@@ -199,7 +246,7 @@ async function detectGemini(text, key) {
 }
 
 // ===============================
-// Shared fetch
+// Shared AI fetch
 // ===============================
 async function aiFetch(url, key, body) {
   const res = await fetch(url, {
@@ -216,21 +263,43 @@ async function aiFetch(url, key, body) {
 }
 
 // ===============================
-// Render
+// Render (ALWAYS shows output)
 // ===============================
 function render(local, ai, domains) {
-  const adult = local.length || ai?.adult_content;
+  const adultDetected =
+    local.length > 0 || (ai && ai.adult_content);
 
-  resultDiv.innerHTML = adult
-    ? `<div class="warning">⚠️ <b>Adult content detected</b>
-       <ul>
-        ${local.map(item).join("")}
-        ${ai?.adult_domains?.map(item).join("")}
-       </ul>
-       ${ai ? `<div class="ai">${ai.explanation} (${ai.confidence}%)</div>` : ""}
-      </div>`
-    : `<div class="safe">✅ <b>No adult content found</b>
-       <ul>${domains.map(item).join("")}</ul></div>`;
+  if (adultDetected) {
+    resultDiv.innerHTML = `
+      <div class="warning">
+        ⚠️ <strong>Adult content detected</strong>
+        <ul>
+          ${local.map(item).join("")}
+          ${ai?.adult_domains?.map(item).join("")}
+        </ul>
+        ${
+          ai
+            ? `<div class="ai">
+                ${ai.explanation || "Detected by AI"}
+                (${ai.confidence || "?"}%)
+              </div>`
+            : ""
+        }
+      </div>
+    `;
+  } else {
+    resultDiv.innerHTML = `
+      <div class="safe">
+        ✅ <strong>No adult content found</strong>
+        ${
+          domains.length
+            ? `<p>Domains mentioned:</p>
+               <ul>${domains.map(item).join("")}</ul>`
+            : "<p>No domains detected.</p>"
+        }
+      </div>
+    `;
+  }
 }
 
 function item(v) {
