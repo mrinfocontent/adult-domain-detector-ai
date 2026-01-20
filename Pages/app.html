@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Adult Domain Detector</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Adult Domain Detector</h1>
+
+    <section class="settings">
+      <label><strong>AI Provider</strong></label>
+      <select id="aiProvider">
+        <option value="openai">OpenAI</option>
+        <option value="groq">Groq (LLaMA)</option>
+        <option value="gemini">Gemini</option>
+      </select>
+
+      <label><strong>API Key</strong></label>
+      <input type="password" id="apiKey" placeholder="Enter API key" />
+      <button id="saveKey">Save Settings</button>
+
+      <p class="hint">Keys are stored locally in your browser.</p>
+    </section>
+
+    <textarea id="description" placeholder="Paste extension description here..."></textarea>
+
+    <button id="analyzeBtn">Analyze Description</button>
+
+    <div id="result"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
