@@ -66,7 +66,6 @@ See [Privacy Policy](PRIVACY_POLICY.md)
 
 ## 📌 Use Cases
 
-- Chrome Web Store reviewers
 - Security researchers
 - Developers auditing extensions
 - Parents & educators
